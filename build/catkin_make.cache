@@ -1,0 +1,2 @@
+project
+-DCATKIN_DEVEL_PREFIX=/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/devel -DCMAKE_INSTALL_PREFIX=/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/install -G Unix Makefiles

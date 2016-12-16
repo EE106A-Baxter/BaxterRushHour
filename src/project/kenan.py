@@ -1,0 +1,188 @@
+#! /usr/bin/env python
+import sys
+import rospy
+import baxter_interface
+import moveit_commander
+from moveit_msgs.msg import OrientationConstraint, Constraints
+import tf
+from ar_track_alvar_msgs.msg import AlvarMarkers
+from geometry_msgs.msg import PoseStamped,Pose
+from baxter_interface import gripper as baxter_gripper
+from baxter_interface import CHECK_VERSION
+import copy
+import string
+# Define the difficulty
+plan_Beg = [[10, 0, 2, 9, 1], [23, 13, 30, 15,34]]
+plan_Int = [[0, 10, 1, 2, 3, 8, 6, 5, 4, 9], [11, 23, 35, 19, 42, 14, 32, 39, 16, 28]]
+plan_Adv = [[0, 1, 2, 4, 5, 6, 8, 9, 10], [13, 32, 16, 15, 36, 35, 11, 33, 26]]
+plan_Exp = [[0, 2, 3, 4, 5, 6, 7, 9, 10], [11, 31, 38, 14, 33, 26, 40, 21, 24]]
+
+class rush_hour:
+	def __init__(self, plan):
+								
+		print('\nStart Initialization!!!!\n')
+		self.trans = 0
+		self.trans2 = 0
+		self.rot = 0
+		self.orientation = 0
+		self.init1 = [0.84,0.43, 0.035] #The first initial position is used to detect the cars 
+		self.init2 = [0.8,0.3, 0.035]   #The second initial position is used to detect the board
+                # Initialize the robot, including Baxter's arm and gripper
+		rospy.init_node('Listener', anonymous=True)
+		moveit_commander.roscpp_initialize(sys.argv)
+		self.robot = moveit_commander.RobotCommander()
+		self.scene = moveit_commander.PlanningSceneInterface()
+		self.MoveIt_left_arm = moveit_commander.MoveGroupCommander('left_arm')
+		self.MoveIt_left_arm.set_planning_time(10)
+		self.MoveIt_right_arm = moveit_commander.MoveGroupCommander('right_arm')
+		self.MoveIt_right_arm.set_planning_time(10)
+		self.Left_Arm = baxter_interface.Limb('left')
+		self.Right_Arm = baxter_interface.Limb('right')
+		self.Left_Gripper = baxter_interface.Gripper('left', CHECK_VERSION)
+		self.Left_Gripper.set_holding_force(80) 
+		print('Calibrating left gripper...')
+		self.Left_Gripper.calibrate()
+		rospy.sleep(0.5)
+		self.Right_Gripper = baxter_interface.Gripper('right', CHECK_VERSION)
+		self.Right_Gripper.set_holding_force(80) 
+		print('Calibrating...')
+		rospy.sleep(0.5)
+		self.TFlistener = tf.TransformListener()
+		self.plan = plan
+
+	def move_to_piece(self):
+                '''
+                This function is used to actuate Baxter's arm to 
+                get the cars and place them on the board 
+                '''
+		for i in range(0, len(plan[0])):
+			print('I am moving to the first position')  
+			self.Move_to_first_place() # Move to the cars
+			print('Moving '+str(plan[0][i]))
+			self.trans = self.detect_artag(plan[0][i])
+			self.trans[2] = 0.035 # Initially, move above the car to avoid any collision
+			self.IK_MoveIt(self.MoveIt_left_arm, self.GetEndPointPosition('left'),self.trans)
+			self.trans = self.detect_artag(plan[0][i])
+			self.trans[2] += 0.01
+			self.IK_MoveIt(self.MoveIt_left_arm, self.GetEndPointPosition('left'),self.trans)
+			print('sucking') 
+			self.Left_Gripper.close(block=True)
+			self.Move_to_upper_place()  
+			self.Move_to_second_place() # Move to the board
+			print('to'+str(self.plan[1][i]))
+			self.trans = self.detect_artag(self.plan[1][i])
+			self.trans[2] = 0.035 # Move above the determined board location to avoid any collision
+			self.IK_MoveIt(self.MoveIt_left_arm, self.GetEndPointPosition('left'),self.trans)
+			self.trans = self.detect_artag(self.plan[1][i])
+                        self.trans[2] += 0.07
+			self.IK_MoveIt(self.MoveIt_left_arm, self.GetEndPointPosition('left'),self.trans)
+                        self.trans = self.detect_artag(self.plan[1][i])
+			self.trans[2] += 0.035 
+			self.IK_MoveIt(self.MoveIt_left_arm, self.GetEndPointPosition('left'),self.trans) # Place the car on the board
+			self.Left_Gripper.open(block=True)										
+			self.Move_to_upper_place()
+			print('Item ' + str(plan[0][i]) + ' has been taken care of. Moving on~')
+
+	def Move_to_first_place(self):
+                '''
+                Send the arm to the position of cars
+                '''
+		start_position = self.GetEndPointPosition('left')
+		self.IK_MoveIt(self.MoveIt_left_arm,start_position,self.init1,0.01)
+
+	def Move_to_second_place(self):
+                '''
+                Send the arm to the position of board
+                '''
+		start_position = self.GetEndPointPosition('left')
+		self.IK_MoveIt(self.MoveIt_left_arm,start_position,self.init2,0.01)
+
+	def Move_to_upper_place(self):
+                '''
+                Give Baxter a way point between the cars and board
+                '''
+		start_position = self.GetEndPointPosition('left')
+		next_position = start_position
+		next_position[2] = 0.035
+		self.IK_MoveIt(self.MoveIt_left_arm,start_position,next_position,0.01)
+
+	def detect_artag(self,plan):
+                '''
+                Find the AR-tags
+                '''
+		check = True
+		while check:
+			try:	
+				trans,rot = self.TFlistener.lookupTransform('/base', '/ar_marker_' + str(plan), rospy.Time(0))
+				check = False
+			except:
+				pass
+		return list(trans)
+
+
+
+
+	def IK_MoveIt(self,Arm,StartPosition=False,EndPosition=False , Accuracy=0.005):
+		'''
+                Adopted from the Lab, plans Baxter's movement
+                '''
+		waypoints = []  
+		wpose = Pose()		
+		wpose.orientation.x = 0.0
+		wpose.orientation.y = 1.0
+		wpose.orientation.z = 0.0	
+		wpose.orientation.w = 0.0
+		
+
+		# first point
+		print(StartPosition)
+		wpose.position.x = StartPosition[0]
+		wpose.position.y = StartPosition[1]
+		wpose.position.z = StartPosition[2]
+		waypoints.append(copy.deepcopy(wpose))
+		
+
+		print(EndPosition)
+		wpose.position.x = EndPosition[0]+0.006
+		wpose.position.y = EndPosition[1]
+		wpose.position.z = EndPosition[2]-0.01
+		waypoints.append(copy.deepcopy(wpose))
+		(plan, fraction) = Arm.compute_cartesian_path(
+									 waypoints,   # waypoints to follow
+									 Accuracy,        # eef_step
+									 0.0)         # jump_threshold   
+		Arm.execute(plan) 
+		rospy.sleep(2.0)
+		print('This is my end position: ',self.GetEndPointPosition('left'))
+								
+	def GetEndPointPosition(self,side):
+                '''
+                Find the current position of Baxter's end effector
+                '''
+		if side == 'left':
+			for i in range(50):
+				POSE = self.Left_Arm.endpoint_pose()
+				Endpoint = [POSE['position'].x,POSE['position'].y, POSE['position'].z]
+		else:
+			for i in range(50):
+				POSE = self.Right_Arm.endpoint_pose()
+				Endpoint = [POSE['position'].x,POSE['position'].y, POSE['position'].z]
+		return Endpoint
+
+if __name__ == '__main__':
+	while True: # Allow the user to choose the difficulty
+		level = raw_input('Tab Beg, Int, Adv, Exp to set the difficult level. ')
+		if level == 'Beg':
+			plan = plan_Beg
+		elif level == 'Int':
+			plan = plan_Int
+		elif level == 'Adv':
+			plan = plan_Adv
+		elif level == 'Exp':
+			plan = plan_Exp
+		else:
+			print(level + '? Are you serious? Set to Beginner anyway~')
+			plan = plan_Beg
+			print('Set to ' + level)                  
+		rush_hour(plan).move_to_piece()
+	

@@ -1,0 +1,8 @@
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/project/CMakeFiles/_catkin_empty_exported_target.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/CMakeFiles/clean_test_results.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/CMakeFiles/download_extra_data.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/CMakeFiles/doxygen.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/gtest/CMakeFiles/gtest.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/gtest/CMakeFiles/gtest_main.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/CMakeFiles/run_tests.dir
+/home/cc/cs61a/fa16/class/cs61a-bum/ros_workspaces/final_pro/build/CMakeFiles/tests.dir
